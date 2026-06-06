@@ -6,6 +6,14 @@
   <img src="NetworkToggle.ico" width="96" height="96" alt="icon">
 </p>
 
+<p align="center">
+  <a href="https://github.com/ghy186843-sudo/NetworkToggle/releases/latest">
+    <img src="https://img.shields.io/badge/⬇️_下载安装包-v1.0-blue?style=for-the-badge" alt="下载">
+  </a>
+  <br>
+  <sub>点击上方按钮 → 下载 <b>以太网开关_Setup.exe</b> → 双击安装</sub>
+</p>
+
 ---
 
 ## 📖 简介
