@@ -1,0 +1,30 @@
+# 编译产物
+*.exe
+!以太网开关_Setup.exe
+
+# 中间文件
+*.pdb
+*.obj
+*.res
+*.cache
+
+# IDE
+.vs/
+*.suo
+*.user
+*.csproj.user
+bin/
+obj/
+
+# 系统文件
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Claude
+.claude/
+
+# 临时文件
+*.tmp
+*.zip
+app.manifest
