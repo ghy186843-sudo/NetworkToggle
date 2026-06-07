@@ -5,7 +5,7 @@
 [Setup]
 AppId={{8F3D9A1B-2C4E-5D6F-7A8B-9C0D1E2F3A4B}
 AppName=以太网开关
-AppVersion=1.0
+AppVersion=1.1
 AppPublisher=NetworkToggle
 AppPublisherURL=https://example.com
 AppSupportURL=https://example.com
@@ -13,7 +13,7 @@ AppUpdatesURL=https://example.com
 DefaultDirName={autopf}\以太网开关
 DefaultGroupName=以太网开关
 AllowNoIcons=yes
-OutputDir=C:\Users\ghy12\Desktop\网络切换脚本
+OutputDir=.\
 OutputBaseFilename=以太网开关_Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -34,8 +34,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务:"; Flags: checkedonce
 
 [Files]
-Source: "C:\Users\ghy12\Desktop\网络切换脚本\NetworkToggle.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\ghy12\Desktop\网络切换脚本\NetworkToggle.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "NetworkToggle.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "NetworkToggle.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{groupname}\以太网开关"; Filename: "{app}\NetworkToggle.exe"; IconFilename: "{app}\NetworkToggle.ico"

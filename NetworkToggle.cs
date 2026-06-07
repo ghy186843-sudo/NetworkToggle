@@ -18,7 +18,8 @@ namespace NetworkToggle
         private Button btnToggle, btnClose;
         private Panel statusIndicator;
         private Timer statusTimer;
-        private string adapterName = "";
+        private string adapterName = "";           // NetConnectionID (e.g., "Ethernet") — for display & netsh
+        private string adapterWMIDeviceName = "";  // WMI Name (e.g., "Realtek PCIe GbE Family Controller") — for WMI Enable/Disable
         private bool isEnabled = false;
 
         [STAThread]
@@ -139,19 +140,45 @@ namespace NetworkToggle
         {
             try
             {
-                string ethernetName = null;
-                foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+                // 使用 WMI 精确查找物理以太网适配器，排除虚拟机/虚拟专用网等虚拟适配器
+                string bestWMIDeviceName = null;
+                string bestNetConnectionID = null;
+                bool bestIsEnabled = false;
+
+                using (var s = new ManagementObjectSearcher(
+                    "SELECT Name, NetConnectionID, NetEnabled FROM Win32_NetworkAdapter " +
+                    "WHERE AdapterTypeID = 0 AND PhysicalAdapter = True AND NetConnectionID IS NOT NULL"))
                 {
-                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
+                    foreach (ManagementObject obj in s.Get())
                     {
-                        if (nic.OperationalStatus == OperationalStatus.Up) { ethernetName = nic.Name; break; }
-                        if (ethernetName == null) ethernetName = nic.Name;
+                        var nc = obj["NetConnectionID"];
+                        if (nc == null || string.IsNullOrEmpty(nc.ToString())) continue;
+
+                        var ne = obj["NetEnabled"];
+                        bool isUp = (ne != null && ne is bool && (bool)ne);
+
+                        // 优先选择已启用的适配器
+                        if (isUp && !bestIsEnabled)
+                        {
+                            var nameObj = obj["Name"];
+                            bestWMIDeviceName = nameObj != null ? nameObj.ToString() : "";
+                            bestNetConnectionID = nc.ToString();
+                            bestIsEnabled = true;
+                            break; // 找到已启用的物理以太网，直接使用
+                        }
+                        if (bestWMIDeviceName == null)
+                        {
+                            var nameObj = obj["Name"];
+                            bestWMIDeviceName = nameObj != null ? nameObj.ToString() : "";
+                            bestNetConnectionID = nc.ToString();
+                        }
                     }
                 }
-                if (string.IsNullOrEmpty(ethernetName)) ethernetName = FindEthernetViaWMI();
-                if (!string.IsNullOrEmpty(ethernetName))
+
+                if (!string.IsNullOrEmpty(bestWMIDeviceName))
                 {
-                    adapterName = ethernetName;
+                    adapterWMIDeviceName = bestWMIDeviceName;
+                    adapterName = bestNetConnectionID ?? bestWMIDeviceName;
                     lblAdapterName.Text = "适配器: " + adapterName;
                     btnToggle.Enabled = true;
                     RefreshStatus();
@@ -164,24 +191,6 @@ namespace NetworkToggle
                 }
             }
             catch (Exception ex) { lblAdapterName.Text = "检测失败: " + ex.Message; }
-        }
-
-        private string FindEthernetViaWMI()
-        {
-            try
-            {
-                using (var s = new ManagementObjectSearcher(
-                    "SELECT * FROM Win32_NetworkAdapter WHERE AdapterTypeID = 0 AND PhysicalAdapter = True"))
-                {
-                    foreach (ManagementObject obj in s.Get())
-                    {
-                        var n = obj["Name"];
-                        if (n != null && !string.IsNullOrEmpty(n.ToString())) return n.ToString();
-                    }
-                }
-            }
-            catch { }
-            return null;
         }
 
         private void RefreshStatus()
@@ -200,17 +209,18 @@ namespace NetworkToggle
             catch { }
         }
 
-        private bool IsAdapterEnabled(string name)
+        private bool IsAdapterEnabled(string netConnectionID)
         {
             try
             {
                 using (var s = new ManagementObjectSearcher(
-                    "SELECT * FROM Win32_NetworkAdapter WHERE Name = '" + name.Replace("'", "''") + "'"))
+                    "SELECT NetEnabled FROM Win32_NetworkAdapter WHERE NetConnectionID = '" +
+                    netConnectionID.Replace("'", "''") + "'"))
                 {
                     foreach (ManagementObject obj in s.Get())
                     {
                         var ne = obj["NetEnabled"];
-                        if (ne != null) return (bool)ne;
+                        if (ne != null && ne is bool) return (bool)ne;
                     }
                 }
             }
@@ -242,8 +252,13 @@ namespace NetworkToggle
         {
             try
             {
+                // 优先使用 WMI 设备名 (Win32_NetworkAdapter.Name) 精确控制
+                string wmiQueryName = !string.IsNullOrEmpty(adapterWMIDeviceName)
+                    ? adapterWMIDeviceName : adapterName;
+
                 using (var s = new ManagementObjectSearcher(
-                    "SELECT * FROM Win32_NetworkAdapter WHERE Name = '" + adapterName.Replace("'", "''") + "'"))
+                    "SELECT * FROM Win32_NetworkAdapter WHERE Name = '" +
+                    wmiQueryName.Replace("'", "''") + "'"))
                 {
                     foreach (ManagementObject obj in s.Get())
                     {
@@ -251,11 +266,29 @@ namespace NetworkToggle
                         if (result != null && (uint)result == 0) { isEnabled = enable; UpdateUI(); return; }
                     }
                 }
+
+                // 如果 WMI 设备名查不到，尝试用 NetConnectionID 查询
+                if (wmiQueryName != adapterName && !string.IsNullOrEmpty(adapterName))
+                {
+                    using (var s2 = new ManagementObjectSearcher(
+                        "SELECT * FROM Win32_NetworkAdapter WHERE NetConnectionID = '" +
+                        adapterName.Replace("'", "''") + "'"))
+                    {
+                        foreach (ManagementObject obj in s2.Get())
+                        {
+                            var result = obj.InvokeMethod(enable ? "Enable" : "Disable", null);
+                            if (result != null && (uint)result == 0) { isEnabled = enable; UpdateUI(); return; }
+                        }
+                    }
+                }
+
+                // 最后回退到 netsh
                 var p = new Process();
                 p.StartInfo = new ProcessStartInfo
                 {
                     FileName = "netsh",
-                    Arguments = string.Format("interface set interface \"{0}\" admin={1}", adapterName, enable ? "enable" : "disable"),
+                    Arguments = string.Format("interface set interface \"{0}\" admin={1}",
+                        adapterName, enable ? "enable" : "disable"),
                     Verb = "runas", UseShellExecute = true,
                     WindowStyle = ProcessWindowStyle.Hidden
                 };
@@ -264,7 +297,8 @@ namespace NetworkToggle
             }
             catch (Exception ex)
             {
-                MessageBox.Show(string.Format("{0}失败: {1}\n\n请以管理员身份运行。", enable ? "启用" : "禁用", ex.Message), "错误",
+                MessageBox.Show(string.Format("{0}失败: {1}\n\n请以管理员身份运行。",
+                    enable ? "启用" : "禁用", ex.Message), "错误",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
